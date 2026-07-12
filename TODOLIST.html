@@ -45,6 +45,108 @@
         letter-spacing: -0.5px;
       }
 
+      /* Scorecards */
+      .scorecards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .scorecard {
+        background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 12px;
+        text-align: center;
+        box-shadow: 0 8px 16px rgba(99, 102, 241, 0.08);
+      }
+
+      .score-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-bottom: 6px;
+      }
+
+      .score-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--accent-color);
+      }
+
+      /* Search and controls */
+      .toolbar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .search-input,
+      .sort-select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        font-size: 14px;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        background: #fff;
+        color: var(--text-main);
+        font-family: inherit;
+      }
+
+      .sort-select {
+        appearance: none;
+        background-image: linear-gradient(45deg, transparent 50%, #6b7280 50%),
+          linear-gradient(135deg, #6b7280 50%, transparent 50%);
+        background-position: calc(100% - 20px) calc(1em + 2px),
+          calc(100% - 14px) calc(1em + 2px);
+        background-size: 6px 6px, 6px 6px;
+        background-repeat: no-repeat;
+        padding-right: 36px;
+      }
+
+      .task-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .favorite-btn {
+        background: #fef3c7;
+        color: #f59e0b;
+        border: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        transition: transform 0.2s ease;
+      }
+
+      .favorite-btn.active {
+        background: #f59e0b;
+        color: #fff;
+      }
+
+      .favorite-btn:hover {
+        transform: scale(1.05);
+      }
+
+      .empty-state {
+        justify-content: center;
+        color: #9ca3af;
+        font-size: 14px;
+        padding: 20px 0;
+      }
+
       /* Input Section */
       .input-group {
         display: flex;
@@ -159,6 +261,37 @@
     <div class="app-card">
       <h1>My Schedule</h1>
 
+      <div class="scorecards" aria-label="Task scorecards">
+        <div class="scorecard">
+          <span class="score-label">Total</span>
+          <div class="score-value" id="score-total">0</div>
+        </div>
+        <div class="scorecard">
+          <span class="score-label">Done</span>
+          <div class="score-value" id="score-completed">0</div>
+        </div>
+        <div class="scorecard">
+          <span class="score-label">Pending</span>
+          <div class="score-value" id="score-pending">0</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <input
+          type="text"
+          id="search-input"
+          class="search-input"
+          placeholder="Search tasks..."
+          autocomplete="off"
+        />
+        <select id="sort-select" class="sort-select">
+          <option value="default">Sort: default</option>
+          <option value="alpha">Sort: A-Z</option>
+          <option value="date">Sort: due date</option>
+          <option value="favorite">Sort: favorites first</option>
+        </select>
+      </div>
+
       <div class="input-group">
         <label>TASK NAME</label>
         <input
@@ -179,7 +312,37 @@
       document.addEventListener("DOMContentLoaded", () => {
         const input = document.getElementById("todo-input");
         const dateInput = document.getElementById("todo-date");
+        const searchInput = document.getElementById("search-input");
+        const sortSelect = document.getElementById("sort-select");
         const list = document.getElementById("todo-list");
+        const totalScore = document.getElementById("score-total");
+        const completedScore = document.getElementById("score-completed");
+        const pendingScore = document.getElementById("score-pending");
+        const STORAGE_KEY = "premium-task-manager-tasks";
+        let tasks = [];
+
+        const updateScorecards = () => {
+          const total = tasks.length;
+          const completed = tasks.filter((task) => task.completed).length;
+          const pending = total - completed;
+
+          totalScore.textContent = total;
+          completedScore.textContent = completed;
+          pendingScore.textContent = pending;
+        };
+
+        const loadTasks = () => {
+          try {
+            const savedTasks = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+            tasks = Array.isArray(savedTasks) ? savedTasks : [];
+          } catch (error) {
+            tasks = [];
+          }
+        };
+
+        const saveTasks = () => {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+        };
 
         // Helper to format the date nicely
         const formatDate = (dateStr) => {
@@ -195,48 +358,138 @@
           );
         };
 
+        const getSortedTasks = () => {
+          const searchTerm = searchInput.value.trim().toLowerCase();
+          const filtered = tasks.filter((task) => {
+            const matchesText = task.text.toLowerCase().includes(searchTerm);
+            const matchesDate = task.date
+              ? formatDate(task.date).toLowerCase().includes(searchTerm)
+              : false;
+            return matchesText || matchesDate;
+          });
+
+          switch (sortSelect.value) {
+            case "alpha":
+              return filtered.sort((a, b) => a.text.localeCompare(b.text));
+            case "date":
+              return filtered.sort((a, b) => {
+                const dateA = a.date ? new Date(a.date).getTime() : Infinity;
+                const dateB = b.date ? new Date(b.date).getTime() : Infinity;
+                return dateA - dateB;
+              });
+            case "favorite":
+              return filtered.sort((a, b) => {
+                if (a.favorite === b.favorite) {
+                  return a.text.localeCompare(b.text);
+                }
+                return Number(b.favorite) - Number(a.favorite);
+              });
+            default:
+              return filtered;
+          }
+        };
+
+        const renderTasks = () => {
+          list.innerHTML = "";
+          const visibleTasks = getSortedTasks();
+
+          if (!visibleTasks.length) {
+            const emptyState = document.createElement("li");
+            emptyState.className = "empty-state";
+            emptyState.textContent = searchInput.value
+              ? "No matching tasks found"
+              : "No tasks yet";
+            list.appendChild(emptyState);
+            updateScorecards();
+            return;
+          }
+
+          visibleTasks.forEach((task) => {
+            const li = document.createElement("li");
+            li.dataset.id = task.id;
+            if (task.completed) li.classList.add("completed");
+
+            const content = document.createElement("div");
+            content.className = "task-content";
+
+            const spanText = document.createElement("span");
+            spanText.className = "todo-text";
+            spanText.textContent = task.text;
+
+            const spanDate = document.createElement("span");
+            spanDate.className = "todo-date";
+            spanDate.textContent = formatDate(task.date);
+
+            content.appendChild(spanText);
+            if (task.date) content.appendChild(spanDate);
+
+            content.onclick = () => {
+              task.completed = !task.completed;
+              saveTasks();
+              renderTasks();
+            };
+
+            const actions = document.createElement("div");
+            actions.className = "task-actions";
+
+            const favoriteBtn = document.createElement("button");
+            favoriteBtn.className = "favorite-btn";
+            if (task.favorite) favoriteBtn.classList.add("active");
+            favoriteBtn.innerHTML = task.favorite ? "★" : "☆";
+            favoriteBtn.onclick = (event) => {
+              event.stopPropagation();
+              task.favorite = !task.favorite;
+              saveTasks();
+              renderTasks();
+            };
+
+            const btn = document.createElement("button");
+            btn.className = "delete-btn";
+            btn.innerHTML = "&times;";
+            btn.onclick = (event) => {
+              event.stopPropagation();
+              tasks = tasks.filter((item) => item.id !== task.id);
+              saveTasks();
+              renderTasks();
+            };
+
+            actions.appendChild(favoriteBtn);
+            actions.appendChild(btn);
+            li.appendChild(content);
+            li.appendChild(actions);
+            list.appendChild(li);
+          });
+
+          updateScorecards();
+        };
+
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") {
             const taskValue = input.value.trim();
             const dateValue = dateInput.value;
 
             if (taskValue !== "") {
-              const li = document.createElement("li");
+              tasks.push({
+                id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                text: taskValue,
+                date: dateValue,
+                completed: false,
+                favorite: false,
+              });
+              saveTasks();
+              renderTasks();
 
-              // Container for text + date
-              const content = document.createElement("div");
-              content.className = "task-content";
-
-              const spanText = document.createElement("span");
-              spanText.className = "todo-text";
-              spanText.textContent = taskValue;
-
-              const spanDate = document.createElement("span");
-              spanDate.className = "todo-date";
-              spanDate.textContent = formatDate(dateValue);
-
-              content.appendChild(spanText);
-              if (dateValue) content.appendChild(spanDate);
-
-              // Toggle complete
-              content.onclick = () => li.classList.toggle("completed");
-
-              // Delete button
-              const btn = document.createElement("button");
-              btn.className = "delete-btn";
-              btn.innerHTML = "&times;";
-              btn.onclick = () => li.remove();
-
-              li.appendChild(content);
-              li.appendChild(btn);
-              list.appendChild(li);
-
-              // Reset fields
               input.value = "";
               dateInput.value = "";
             }
           }
         });
+
+        searchInput.addEventListener("input", renderTasks);
+        sortSelect.addEventListener("change", renderTasks);
+
+        loadTasks();
+        renderTasks();
       });
     </script>
   </body>
